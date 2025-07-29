@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         GitHub Issue Triage Helper
 // @namespace    https://github.com/nbolton/github-triage-helper
+// @source       https://github.com/nbolton/github-triage-helper
 // @license      MIT
-// @version      0.1
+// @version      0.3
 // @description  Suggest triage questions for GitHub issues using AI
 // @author       nbolton
 // @match        https://github.com/*/*/issues/*
@@ -11,8 +12,11 @@
 // @connect      api.github.com
 // @grant        GM.getValue
 // @grant        GM.setValue
+// @downloadURL  https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.user.js
+// @updateURL    https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.meta.js
 // ==/UserScript==
 
+// Remember: Secrets be reset/edited on the script's 'Storage' tab in Tampermonkey (when using advanced config mode).
 (async function () {
     'use strict';
 
@@ -201,7 +205,7 @@
 
     async function run() {
 
-        if(!/\/issues\/\d+$/.test(location.href)) {
+        if(!/\/issues\/\d+/.test(location.href)) {
             console.log("Ignoring:", location.href);
             return;
         }
@@ -220,26 +224,6 @@
 
         box.innerHTML = aiSuggestions;
     }
-
-    unsafeWindow.resetApiKey = async function () {
-        await GM.deleteValue("openai_api_key");
-        alert("API key cleared via console. Reload to re-enter.");
-    };
-
-    unsafeWindow.checkApiKey = async function () {
-        const val = await GM.getValue("openai_api_key");
-        console.log("Stored API key:", val);
-    };
-
-    unsafeWindow.resetGitHubToken = async function () {
-        await GM.deleteValue("github_token");
-        alert("GitHub token key cleared via console. Reload to re-enter.");
-    };
-
-    unsafeWindow.checkGitHubToken = async function () {
-        const val = await GM.getValue("github_token");
-        console.log("Stored GitHub token:", val);
-    };
 
     run();
 })();
