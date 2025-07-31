@@ -12,9 +12,9 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM.getValue
 // @grant        GM.setValue
-// @require      https://cdn.jsdelivr.net/npm/marked/marked.min.js
-// @downloadURL https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.user.js
-// @updateURL https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.meta.js
+// @require      https://update.greasyfork.org/scripts/34138/223779/markedjs.js
+// @downloadURL  https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.user.js
+// @updateURL    https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.meta.js
 // ==/UserScript==
 
 const css =
