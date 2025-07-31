@@ -3,32 +3,48 @@
 // @namespace    https://github.com/nbolton/github-triage-helper
 // @source       https://github.com/nbolton/github-triage-helper
 // @license      MIT
-// @version      0.3
+// @version      0.4
 // @description  Suggest triage questions for GitHub issues using AI
 // @author       nbolton
 // @match        https://github.com/*/*/issues/*
-// @grant        GM_xmlhttpRequest
 // @connect      api.openai.com
 // @connect      api.github.com
+// @grant        GM_xmlhttpRequest
 // @grant        GM.getValue
 // @grant        GM.setValue
-// @downloadURL  https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.user.js
-// @updateURL    https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.meta.js
+// @require      https://cdn.jsdelivr.net/npm/marked/marked.min.js
+// @downloadURL https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.user.js
+// @updateURL https://update.greasyfork.org/scripts/543975/GitHub%20Issue%20Triage%20Helper.meta.js
 // ==/UserScript==
+
+const css =
+`
+#ai-suggestions-box {
+    margin: 16px 0 0 55px;
+    padding: 12px 16px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    line-height: 1.5;
+    font-size: 14px;
+}
+
+#ai-suggestions-box ol {
+    margin-left: 20px;
+    padding-left: 0;
+}
+
+#ai-suggestions-box li {
+    margin-bottom: 6px;
+}
+
+#ai-suggestions-box h3 {
+    margin-bottom: 15px;
+}
+`;
 
 // Remember: Secrets be reset/edited on the script's 'Storage' tab in Tampermonkey (when using advanced config mode).
 (async function () {
     'use strict';
-
-    const suggestionBoxStyle = {
-        margin: '16px 0px 0px 55px',
-        padding: '12px 16px',
-        border: '1px solid #30363d',
-        borderRadius: '6px',
-        fontSize: '14px',
-        lineHeight: '1.5',
-        whiteSpace: 'pre-wrap',
-    };
 
     let apiKey = await GM.getValue("openai_api_key");
     if (!apiKey) {
@@ -104,9 +120,6 @@
             'User-Agent': 'GitHub-Issue-Triage-Script'
         };
 
-        const issueUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
-        const commentsUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
-
         const fetchWithGM = (url, timeoutMs = 5000) => {
             return Promise.race([
                 new Promise((resolve, reject) => {
@@ -129,15 +142,23 @@
             ])
         }
 
-        const [issue, comments] = await Promise.all([
+        const readmeUrl = `https://api.github.com/repos/${owner}/${repo}/readme`;
+        const issueUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
+        const commentsUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+
+        const [readme, issue, comments] = await Promise.all([
+            fetchWithGM(readmeUrl),
             fetchWithGM(issueUrl),
             fetchWithGM(commentsUrl)
         ]);
 
-        console.debug("GitHub response:", issue, comments);
+        const readmeDecoded = atob(readme.content || '');
+        console.debug("GitHub response:", readmeDecoded, issue, comments);
 
         const allText = [
-            `@${issue.user.login} (OP):\n${issue.body}`,
+            `GitHub repo: https://github.com/${owner}/${repo}`,
+            "#Readme\n\n```markdown\n" + readmeDecoded + "\n```",
+            `#Issue\n\nUser: @${issue.user.login}\nTitle: ${issue.title}\nBody:\n${issue.body}`,
             ...comments.map(c => `@${c.user.login}:\n${c.body}`)
         ].join('\n\n---\n\n');
 
@@ -148,19 +169,31 @@
         console.log("Fetching AI suggestions...");
 
         const payload = JSON.stringify({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o",
             messages: [
                 {
                     role: "system",
-                    content: "You're a helpful assistant that suggests triage questions for GitHub issues."
+                    content: (
+                        "You are a senior GitHub issue triage assistant. " +
+                        "Your job is to help maintainers understand, reproduce, and fix bugs by asking the most useful clarifying questions. " +
+                        "Focus on uncovering missing information, narrowing scope, and identifying blockers to resolution. " +
+                        "Avoid repeating what has already been said. " +
+                        "Format responses in Markdown."
+                    )
                 },
                 {
                     role: "user",
-                    content: `Here are comments from a GitHub issue:\n\n${commentsText}\n\nWhat questions would help triage this issue?`
+                    content: (
+                        `Here is a GitHub issue thread including the original report and comments:\n\n${commentsText}\n\n` +
+                        `Your task:\n` +
+                        `1. Summarize the current understanding of the issue in one short paragraph.\n` +
+                        `2. Then, list up to 5 concise, helpful questions that would help clarify, reproduce, or scope the issue further.\n\n` +
+                        `Use clear, technical language and avoid redundancy.`
+                    )
                 }
             ],
-            temperature: 0.7,
-            max_tokens: 300
+            temperature: 0.3, // Lower numbers give safer, less creative answers.
+            max_tokens: 600
         });
 
         return new Promise((resolve, reject) => {
@@ -196,14 +229,25 @@
             return null;
         }
 
+        const style = document.createElement('style');
+        style.textContent = css;
+        document.head.appendChild(style);
+
         const box = document.createElement('div');
         box.id = 'ai-suggestions-box';
-        Object.assign(box.style, suggestionBoxStyle);
         timeline.parentNode.insertBefore(box, timeline.nextSibling);
+
         return box;
     }
 
     async function run() {
+
+        if (/\/issues\/\d+\?notification_referrer_id.+/.test(location.href)) {
+            // Page loads twice when URL contains 'notification_referrer_id', so ignore this.
+            console.log("Issue URL has 'notification_referrer_id'");
+            console.log("Ignoring:", location.href);
+            return;
+        }
 
         if(!/\/issues\/\d+/.test(location.href)) {
             console.log("Ignoring:", location.href);
@@ -211,9 +255,11 @@
         }
 
         const aiInput = await fetchIssueText(githubToken);
-        console.debug("AI input text length:", aiInput.length);
+        console.log("AI input length:", aiInput.length);
+        console.debug("AI input:", aiInput);
 
         const aiSuggestions = await fetchAISuggestions(aiInput, apiKey);
+        console.log("AI response length:", aiSuggestions.length);
         console.debug("AI suggestions:", aiSuggestions);
 
         if (!box) {
@@ -222,7 +268,8 @@
             return;
         }
 
-        box.innerHTML = aiSuggestions;
+        const html = marked.parse(aiSuggestions);
+        box.innerHTML = html;
     }
 
     run();
