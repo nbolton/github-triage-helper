@@ -3,7 +3,7 @@
 // @namespace    https://github.com/nbolton/github-triage-helper
 // @source       https://github.com/nbolton/github-triage-helper
 // @license      MIT
-// @version      0.5
+// @version      0.6
 // @description  Suggest triage questions for GitHub issues using AI
 // @author       nbolton
 // @match        https://github.com/*
@@ -76,6 +76,11 @@ const css =
                 lastUrl = location.href;
                 logger.debug("URL changed:", lastUrl);
                 run();
+                return;
+            }
+
+            if (!isValidUrl(location.href)) {
+                logger.debug("Ignoring:", location.href);
                 return;
             }
 
@@ -245,18 +250,25 @@ const css =
         return box;
     }
 
+    function isValidUrl(url) {
+        if (/\/issues\/\d+\?notification_referrer_id.+/.test(url)) {
+            // Page loads twice when URL contains 'notification_referrer_id', so ignore this.
+            logger.debug("URL has 'notification_referrer_id'");
+            return false;
+        }
+
+        if(!/\/issues\/\d+/.test(url)) {
+            return false;
+        }
+
+        return true;
+    }
+
     async function run() {
 
         logger.log("Running");
 
-        if (/\/issues\/\d+\?notification_referrer_id.+/.test(location.href)) {
-            // Page loads twice when URL contains 'notification_referrer_id', so ignore this.
-            logger.debug("Issue URL has 'notification_referrer_id'");
-            logger.debug("Ignoring:", location.href);
-            return;
-        }
-
-        if(!/\/issues\/\d+/.test(location.href)) {
+        if (!isValidUrl(location.href)) {
             logger.debug("Ignoring:", location.href);
             return;
         }
