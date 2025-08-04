@@ -271,7 +271,7 @@ const css =
 
         if (!box) {
             // TODO: delay rendering until it is loaded
-            console.error("Suggestions box didn't load in time");
+            logger.error("Suggestions box didn't load in time");
             return;
         }
 
