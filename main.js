@@ -3,7 +3,7 @@
 // @namespace    https://github.com/nbolton/github-triage-helper
 // @source       https://github.com/nbolton/github-triage-helper
 // @license      MIT
-// @version      0.4
+// @version      0.5
 // @description  Suggest triage questions for GitHub issues using AI
 // @author       nbolton
 // @match        https://github.com/*
