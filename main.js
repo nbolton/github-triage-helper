@@ -6,7 +6,7 @@
 // @version      0.4
 // @description  Suggest triage questions for GitHub issues using AI
 // @author       nbolton
-// @match        https://github.com/*/*/issues/*
+// @match        https://github.com/*
 // @connect      api.openai.com
 // @connect      api.github.com
 // @grant        GM_xmlhttpRequest
@@ -43,56 +43,61 @@ const css =
 `;
 
 // Remember: Secrets be reset/edited on the script's 'Storage' tab in Tampermonkey (when using advanced config mode).
-(async function () {
+(function () {
     'use strict';
 
-    let apiKey = await GM.getValue("openai_api_key");
-    if (!apiKey) {
-        apiKey = prompt("OpenAI API key:");
-        if (apiKey) {
-            await GM.setValue("openai_api_key", apiKey);
-        }
-    }
-
-    let githubToken = await GM.getValue("github_token");
-    if (!githubToken) {
-        githubToken = prompt("GitHub API token:");
-        if (githubToken) {
-            await GM.setValue("github_token", githubToken);
-        }
-    }
-
+    const logger = createLogger("triage-helper");
+    let apiKey = null;
+    let githubToken = null;
     let box = null;
-    let lastUrl = location.href;
 
-    const observer = new MutationObserver(() => {
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
-            console.debug("URL changed:", lastUrl);
-            onUrlChange();
-            return;
+    async function init() {
+        logger.log("GitHub Issue Triage Helper");
+
+        apiKey = await GM.getValue("openai_api_key");
+        if (!apiKey) {
+            apiKey = prompt("OpenAI API key:");
+            if (apiKey) {
+                await GM.setValue("openai_api_key", apiKey);
+            }
         }
 
-        // prevent recursion
-        if (document.getElementById('ai-suggestions-box')) return;
-
-        console.debug("DOM changed, injecting suggestion box");
-
-        box = injectSuggestionBox();
-        if (!box) {
-            console.debug("No where to inject suggestion box");
-            return;
+        githubToken = await GM.getValue("github_token");
+        if (!githubToken) {
+            githubToken = prompt("GitHub API token:");
+            if (githubToken) {
+                await GM.setValue("github_token", githubToken);
+            }
         }
 
-        box.innerHTML = "Loading AI suggestions...";
-    });
+        let lastUrl = location.href;
+        const observer = new MutationObserver(() => {
+            if (location.href !== lastUrl) {
+                lastUrl = location.href;
+                logger.debug("URL changed:", lastUrl);
+                run();
+                return;
+            }
 
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+            // prevent recursion
+            if (document.getElementById('ai-suggestions-box')) return;
 
-    function onUrlChange() {
+            logger.debug("DOM changed, injecting suggestion box");
+
+            box = injectSuggestionBox();
+            if (!box) {
+                logger.debug("No where to inject suggestion box");
+                return;
+            }
+
+            box.innerHTML = "Loading AI suggestions...";
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
         run();
     }
 
@@ -105,12 +110,12 @@ const css =
     }
 
     async function fetchIssueText(githubToken) {
-        console.log("Fetching issue text...");
+        logger.log("Fetching issue text...");
 
         const context = await getIssueContext();
         if (!context) throw new Error("Invalid GitHub URL");
 
-        console.debug("Issue number:", context.issueNumber);
+        logger.debug("Issue number:", context.issueNumber);
 
         const { owner, repo, issueNumber } = context;
 
@@ -153,7 +158,7 @@ const css =
         ]);
 
         const readmeDecoded = atob(readme.content || '');
-        console.debug("GitHub response:", readmeDecoded, issue, comments);
+        logger.debug("GitHub response:", readmeDecoded, issue, comments);
 
         const allText = [
             `GitHub repo: https://github.com/${owner}/${repo}`,
@@ -166,7 +171,7 @@ const css =
     }
 
     async function fetchAISuggestions(commentsText, apiKey) {
-        console.log("Fetching AI suggestions...");
+        logger.log("Fetching AI suggestions...");
 
         const payload = JSON.stringify({
             model: "gpt-4o",
@@ -208,7 +213,7 @@ const css =
                 onload: function (response) {
                     try {
                         const json = JSON.parse(response.responseText);
-                        console.debug("AI response:", json);
+                        logger.debug("AI response:", json);
                         const content = json.choices?.[0]?.message?.content || 'No response';
                         resolve(content);
                     } catch (e) {
@@ -242,29 +247,31 @@ const css =
 
     async function run() {
 
+        logger.log("Running");
+
         if (/\/issues\/\d+\?notification_referrer_id.+/.test(location.href)) {
             // Page loads twice when URL contains 'notification_referrer_id', so ignore this.
-            console.log("Issue URL has 'notification_referrer_id'");
-            console.log("Ignoring:", location.href);
+            logger.debug("Issue URL has 'notification_referrer_id'");
+            logger.debug("Ignoring:", location.href);
             return;
         }
 
         if(!/\/issues\/\d+/.test(location.href)) {
-            console.log("Ignoring:", location.href);
+            logger.debug("Ignoring:", location.href);
             return;
         }
 
         const aiInput = await fetchIssueText(githubToken);
-        console.log("AI input length:", aiInput.length);
-        console.debug("AI input:", aiInput);
+        logger.log("AI input length:", aiInput.length);
+        logger.debug("AI input:", aiInput);
 
         const aiSuggestions = await fetchAISuggestions(aiInput, apiKey);
-        console.log("AI response length:", aiSuggestions.length);
-        console.debug("AI suggestions:", aiSuggestions);
+        logger.log("AI response length:", aiSuggestions.length);
+        logger.debug("AI suggestions:", aiSuggestions);
 
         if (!box) {
             // TODO: delay rendering until it is loaded
-            console.error("Suggestions box didn't load in time");
+            logger.error("Suggestions box didn't load in time");
             return;
         }
 
@@ -272,5 +279,20 @@ const css =
         box.innerHTML = html;
     }
 
-    run();
+    function createLogger(scriptName) {
+        function formatMessage(level, ...args) {
+            const prefix = `[${scriptName}]`;
+            return [prefix, ...args];
+        }
+
+        return {
+            log: (...args) => console.log(...formatMessage('log', ...args)),
+            info: (...args) => console.info(...formatMessage('info', ...args)),
+            warn: (...args) => console.warn(...formatMessage('warn', ...args)),
+            error: (...args) => console.error(...formatMessage('error', ...args)),
+            debug: (...args) => console.debug(...formatMessage('debug', ...args)),
+        };
+    }
+
+    init();
 })();
